@@ -325,4 +325,9 @@ ggplot(data=df,aes(x=x.1,y=x.2,z=y)) +
   geom_contour_filled(bins=50,show.legend=FALSE) +
   scale_fill_viridis(option="A",discrete = T)
 ```
+Implementierung nach Doku o. Ä. - Luisa
+
+```{r}
+
+```
 
