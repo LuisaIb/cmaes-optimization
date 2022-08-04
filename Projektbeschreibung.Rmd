@@ -331,3 +331,84 @@ Implementierung nach Doku o. Ä. - Luisa
 
 ```
 
+
+Versuch mit mehrfacher Ausführung
+
+```{r}
+cma_es <- function (x = NULL, fun, lower, upper, 
+                                 control = list(), ...) {
+  #con <- list(funEvals = 1500) # default limit on function evaluations
+  #con[names(control)] <- control
+  #control <- con  
+  
+  #npar <- length(lower) # number of parameters
+  #xtest <- matrix(runif(control$funEvals*npar,
+  #                      lower,upper),,npar,byrow=TRUE)
+  #ytest <- matrix(fun(xtest, ...), 1) 
+  # important note: ... are arguments passed
+  # from the calling function directly to fun 
+  # (not touched by uniformRandomSearch)
+  #best_index <- which.min(ytest)
+  #print(xtest[best_index,])
+  #list(
+  #  xbest = xtest[best_index,],
+  #  ybest = ytest[best_index],
+  #  count = nrow(xtest)
+  #)
+  
+
+### Alternative example, using a different algorithm instead of random search
+  result <- cmaes::cma_es(par = runif(length(lower),lower,upper),
+                          fn=fun,lower = lower, upper=upper, ..., control = list(
+                            funEvals = c(1000, 1500, 2000), 
+                            maxIter = c(200, 500, 800), 
+                            insigma = c(1, 2, 3, 4), 
+                            same.resampling.instance = TRUE,
+                            impute.val = NULL,
+                            start = NULL,
+                            tune.threshold = FALSE,
+                            tune.threshold.args = list(),
+                            log.fun = "default",
+                            final.dw.perc = NULL,
+                            budget = 50))
+  
+  
+  list(
+    xbest = result$par, 
+    ybest = result$value, 
+    count = 0
+  )
+}
+```
+
+
+```{r}
+resultlist <- NULL
+models <- NULL
+
+for(i in 0:30){
+    model <- buildKriging(x,matrix(y,,1),control=list(
+    algTheta=cma_es
+  ))
+    
+  act_res <- c(model$like, model$Theta[1], model$Theta[2], model$Lambda)
+  resultlist <- rbind(resultlist, act_res)
+
+  models <- rbind(models, model)
+}
+
+resultlist
+
+#yplot <- predict(model,xplot)
+#df <- data.frame(x.1=xplot$Var1,x.2=xplot$Var2,y=yplot)
+#ggplot(data=df,aes(x=x.1,y=x.2,z=y)) +
+#  geom_contour_filled(bins=50,show.legend=FALSE) +
+#  scale_fill_viridis(option="A",discrete = T)
+```
+
+```{r}
+
+best_result <- resultlist[which.min(resultlist[,1]),]
+best_result
+
+```
