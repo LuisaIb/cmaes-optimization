@@ -1,0 +1,308 @@
+---
+title: "Projektbeschreibung - AOT"
+author: "Martin Zaefferer"
+output:
+  pdf_document: default
+  html_document: 
+    theme: readable
+    toc: yes
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    highlight: pygments
+    number_sections: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+set.seed(1)
+n <- 70
+lower <- c(-2.5,-1.5)
+upper <- c(1.5,2.5)
+x <- cbind(runif(n,lower[1],upper[1]),runif(n,lower[2],upper[2]))
+f <- function(x){
+  20 + x[,1]^2 + x[,2]^2 - 10*(cos(2*pi*x[,1]) + cos(2*pi*x[,2]))
+}
+y <- f(x)
+
+## Alternative mit einer anderen Testfunktion:
+#set.seed(1)
+#n <- 50
+#lower <- c(-5,0)
+#upper <- c(10,15)
+#x <- cbind(runif(n,lower[1],upper[1]),runif(n,lower[2],upper[2]))
+#f <- function(x){
+#  (x[,2] - 5.1/(4 * pi^2) * (x[,1]^2) + 5/pi * x[,1] - 6)^2 + 
+#            10 * (1 - 1/(8 * pi)) * cos(x[,1]) + 10
+#}
+#y <- f(x)
+```
+
+Hier soll modelliert werden, wie y von x.1 und x.2 abhängt (Spalten `x`).
+Wir können uns die erzeugten Daten anschauen mit:
+
+```{r}
+df <- data.frame(x=x,y=y)
+require(ggplot2)
+require(viridis)
+ggplot(data=df,aes(x=x.1,y=x.2,colour=y)) +
+  geom_point() +
+  scale_colour_viridis(option="A")
+```
+
+Mit dem Paket SPOT können wir ein GPM erzeugen ...
+
+```{r}
+require(SPOT)
+model <- buildKriging(x,matrix(y,,1))
+```
+
+... und auch visualisieren ...
+```{r}
+nplot_dim <- 100
+xplot <- expand.grid(seq(from=lower[1],to=upper[1],length.out=nplot_dim),
+               seq(from=lower[2],to=upper[2],length.out=nplot_dim))
+yplot <- predict(model,xplot)
+df <- data.frame(x.1=xplot$Var1,x.2=xplot$Var2,y=yplot)
+ggplot(data=df,aes(x=x.1,y=x.2,z=y)) +
+  geom_contour_filled(bins=50,show.legend=FALSE) +
+  scale_fill_viridis(option="A",discrete = T)
+```
+
+Ups, das sieht eigenartig aus.
+Um zu prüfen, ob das Ergebnis 'gut' ist, können wir uns erstmal anschauen, wie die Testfunktion tatsächlich aussehen soll.
+
+```{r}
+yplot2 <- f(xplot)
+df <- data.frame(x.1=xplot$Var1,x.2=xplot$Var2,y=yplot2)
+ggplot(data=df,aes(x=x.1,y=x.2,z=y)) +
+  geom_contour_filled(bins=50,show.legend=FALSE) +
+  scale_fill_viridis(option="A",discrete = T)
+```
+Wie zu sehen ist, gibt es eine deutliche Abweichung zwischen Modell und Testfunktion.
+Wir können uns zusätzlich anschauen, wie gut MLE funktioniert hat.
+MLE wurde im Hintergrund ausgeführt, während des `buildKriging` 
+Aufrufs.
+
+Der beste gefundene Likelihood Wert ist:
+```{r}
+model$like
+```
+GridSearch
+
+
+```{r}
+
+values <-NULL
+
+cma_es <- function (x = NULL, fun, lower, upper, 
+                                 control = list(), ...) {
+  
+  t_evals <- runif(1, 500, 3000)
+  t_iters <- runif(1, 100, 1000)
+  t_budget <- runif(1, 10, 200)
+  t_sigma <- runif(1, 10, 500)
+  #t_mu <- runif(1, 10, 500)
+  #t_lambda <- t_mu + runif(1, 0, 100)
+  
+  print('evals')
+  print(t_evals)
+  print('iters')
+  print(t_iters)
+  print('budget')
+  print(t_budget)
+  print('sigma')
+  print(t_sigma)
+  #print('mu')
+  #print(t_mu)
+  #print('lambda')
+  #print(t_lambda)
+  
+  
+  values <- cbind(values, t_evals, t_iters, t_budget, t_sigma)
+  
+  
+  result <- cmaes::cma_es(par = runif(length(lower),lower,upper),
+                          fn=fun,lower = lower, upper=upper, ..., control = list(
+                            funEvals = t_evals, 
+                            maxIter = t_iters, 
+                            budget = t_budget,
+                            sigma = t_sigma
+                            #mu = t_mu
+                            #lambda = t_lambda
+                          ))
+    
+    list(
+    xbest = result$par, 
+    ybest = result$value, 
+    count = 0
+  )
+    
+    
+}
+```
+
+
+
+```{r}
+set.seed(1)
+n_eval <- 50
+x_eval <- cbind(runif(n_eval,lower[1],upper[1]),runif(n_eval,lower[2],upper[2]))
+
+y_eval <- f(x_eval)
+```
+
+
+
+
+```{r}
+
+likes <- NULL
+
+for(i in 0:50) {
+  
+
+  #set.seed(1)
+  #n <- 70
+  #x <- cbind(runif(n,lower[1],upper[1]),runif(n,lower[2],upper[2]))
+  #y <- f(x)
+  
+  
+  model <- buildKriging(x,matrix(y,,1),control=list(
+        algTheta=cma_es
+  ))
+  
+  likes <- cbind(likes, model$like)
+
+  
+  y_cmaes <- predict(model, x_eval)
+
+  y_ev <- cbind(y_eval)
+  y_cm <- NULL
+
+  for(element in y_cmaes){
+    y_cm <- cbind(y_cm, element)
+  }
+
+
+  print('RMSE')
+  print(sqrt(mean((y_ev - y_cm)^2)))
+
+
+  print('like')
+  print(model$like)
+  print(' ')
+  print(' ')
+  
+}
+
+
+```
+
+
+```{r}
+
+values <-NULL
+
+cma_es <- function (x = NULL, fun, lower, upper, 
+                                 control = list(), ...) {
+  
+  
+  
+  result <- cmaes::cma_es(par = runif(length(lower),lower,upper),
+                          fn=fun,lower = lower, upper=upper, ..., control = list(
+                            funEvals = 1500, 
+                            maxIter = 500, 
+                            budget = 50,
+                            sigma = 400
+                            #mu = t_mu
+                            #lambda = t_lambda
+                          ))
+    
+    list(
+    xbest = result$par, 
+    ybest = result$value, 
+    count = 0
+  )
+    
+    
+}
+```
+
+
+
+```{r}
+set.seed(1)
+n_eval <- 50
+x_eval <- cbind(runif(n_eval,lower[1],upper[1]),runif(n_eval,lower[2],upper[2]))
+
+y_eval <- f(x_eval)
+```
+
+
+```{r}
+
+likes_cma_es <- NULL
+likes_default <- NULL
+
+rmse_cma_es <- NULL
+rmse_default <- NULL
+
+
+for(i in 0:50){
+  model_cmaes <- buildKriging(x,matrix(y,,1),control=list(
+      algTheta=cma_es
+  ))
+    
+  model_default <- buildKriging(x,matrix(y,,1))
+  
+  likes_cma_es <- rbind(likes_cma_es, model_cmaes$like)
+  likes_default <- rbind(likes_default, model_default$like)
+  
+  
+  y_cmaes <- predict(model_cmaes, x_eval)
+  y_default <- predict(model_default, x_eval)
+  
+  y_ev <- cbind(y_eval)
+  y_cm <- NULL
+  y_def <- NULL
+  
+  for(element in y_cmaes){
+    y_cm <- cbind(y_cm, element)
+  }
+  
+  for(element in y_default){
+    y_def <- cbind(y_def, element)
+  }
+  
+  rmse_cma_es <- cbind(rmse_cma_es, sqrt(mean((y_ev - y_cm)^2)))
+  rmse_default <- cbind(rmse_default, sqrt(mean((y_ev - y_def)^2)))
+
+}
+
+likes_cma_es
+likes_default
+
+rmse_cma_es
+rmse_default
+
+```
+
+
+```{r}
+
+boxplot(rmse_cma_es[1,], rmse_default[1,],horizontal=T,names=c("CMA-ES","Default"))
+
+```
+
+
+
+
+
+
+
+
+
