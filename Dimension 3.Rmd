@@ -1,0 +1,150 @@
+---
+title: "Projektbeschreibung - AOT"
+author: "Martin Zaefferer"
+output:
+  pdf_document: default
+  html_document: 
+    theme: readable
+    toc: yes
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    highlight: pygments
+    number_sections: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+set.seed(1)
+n <- 70
+lower <- c(-2.5,-1.5, -2)
+upper <- c(1.5,2.5, 2)
+x <- cbind(runif(n,lower[1],upper[1]),runif(n,lower[2],upper[2]), 
+           runif(n,lower[3],upper[3]))
+f <- function(x){
+  20 + x[,1]^2 + x[,2]^2 + x[,3]^2 - 10*(cos(2*pi*x[,1]) + cos(2*pi*x[,2]) + cos(2*pi*x[,3]))
+}
+y <- f(x)
+```
+
+
+
+Mit dem Paket SPOT können wir ein GPM erzeugen ...
+
+```{r}
+require(SPOT)
+model <- buildKriging(x,matrix(y,,1))
+model$like
+```
+
+
+
+CMA-ES
+
+```{r}
+
+cma_es <- function (x = NULL, fun, lower, upper, 
+                                 control = list(), ...) {
+  result <- cmaes::cma_es(par = runif(length(lower),lower,upper),
+                          fn=fun,lower = lower, upper=upper, ..., 
+                          control = list(
+                            funEvals = 1500, 
+                            maxIter = 500, 
+                            budget = 50,
+                            sigma = 400,
+                            mu = 10,
+                            lambda = 50
+                          )
+                          )
+  list(
+    xbest = result$par, 
+    ybest = result$value, 
+    count = 0
+  )
+}
+```
+
+Evaluation
+
+```{r}
+set.seed(1)
+n_eval <- 50
+x_eval <- cbind(runif(n_eval,lower[1],upper[1]), runif(n_eval,lower[2],upper[2]),
+                runif(n_eval,lower[3],upper[3]))
+
+y_eval <- f(x_eval)
+```
+
+
+
+```{r}
+
+likes_cma_es <- NULL
+likes_default <- NULL
+
+theta_cma_es <- NULL
+theta_default <-NULL
+
+lambda_cma_es <- NULL
+lambda_default <- NULL
+
+rmse_cma_es <- NULL
+rmse_default <- NULL
+
+
+for(i in 0:50){
+  print(i)
+  model_cmaes <- buildKriging(x,matrix(y,,1),control=list(
+      algTheta=cma_es
+  ))
+    
+  model_default <- buildKriging(x,matrix(y,,1))
+  
+  likes_cma_es <- rbind(likes_cma_es, model_cmaes$like)
+  likes_default <- rbind(likes_default, model_default$like)
+  
+  
+  theta_cma_es <- rbind(theta_cma_es, model_cmaes$Theta)
+  theta_default <- rbind(theta_default, model_default$Theta)
+  
+  lambda_cma_es <- rbind(lambda_cma_es, model_cmaes$Lambda)
+  lambda_default <- rbind(lambda_default, model_default$Lambda)
+  
+  y_cmaes <- predict(model_cmaes, x_eval)
+  y_default <- predict(model_default, x_eval)
+  
+  y_ev <- cbind(y_eval)
+  y_cm <- NULL
+  y_def <- NULL
+  
+  for(element in y_cmaes){
+    y_cm <- cbind(y_cm, element)
+  }
+  
+  for(element in y_default){
+    y_def <- cbind(y_def, element)
+  }
+  
+  rmse_cma_es <- cbind(rmse_cma_es, sqrt(mean((y_ev - y_cm)^2)))
+  rmse_default <- cbind(rmse_default, sqrt(mean((y_ev - y_def)^2)))
+
+}
+
+likes_cma_es
+likes_default
+
+rmse_cma_es
+rmse_default
+
+```
+
+```{r}
+
+boxplot(likes_cma_es[,1], likes_default[,1],horizontal=T,names=c("CMA-ES","Default"))
+boxplot(rmse_cma_es[1,], rmse_default[1,],horizontal=T,names=c("CMA-ES","Default"))
+
+```

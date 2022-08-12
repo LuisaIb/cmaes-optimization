@@ -1,0 +1,212 @@
+---
+title: "Projektbeschreibung - AOT"
+author: "Martin Zaefferer"
+output:
+  pdf_document: default
+  html_document: 
+    theme: readable
+    toc: yes
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    highlight: pygments
+    number_sections: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+ohne festgelegten Seed
+
+```{r}
+#set.seed(1)
+n <- 70
+lower <- c(-2.5,-1.5)
+upper <- c(1.5,2.5)
+x <- cbind(runif(n,lower[1],upper[1]),runif(n,lower[2],upper[2]))
+f <- function(x){
+  20 + x[,1]^2 + x[,2]^2 - 10*(cos(2*pi*x[,1]) + cos(2*pi*x[,2]))
+}
+y <- f(x)
+```
+
+Hier soll modelliert werden, wie y von x.1 und x.2 abhängt (Spalten `x`).
+Wir können uns die erzeugten Daten anschauen mit:
+
+```{r}
+df <- data.frame(x=x,y=y)
+require(ggplot2)
+require(viridis)
+ggplot(data=df,aes(x=x.1,y=x.2,colour=y)) +
+  geom_point() +
+  scale_colour_viridis(option="A")
+```
+
+Mit dem Paket SPOT können wir ein GPM erzeugen ...
+
+```{r}
+require(SPOT)
+model <- buildKriging(x,matrix(y,,1))
+model$like
+```
+
+... und auch visualisieren ...
+```{r}
+nplot_dim <- 100
+xplot <- expand.grid(seq(from=lower[1],to=upper[1],length.out=nplot_dim),
+               seq(from=lower[2],to=upper[2],length.out=nplot_dim))
+yplot <- predict(model,xplot)
+df <- data.frame(x.1=xplot$Var1,x.2=xplot$Var2,y=yplot)
+ggplot(data=df,aes(x=x.1,y=x.2,z=y)) +
+  geom_contour_filled(bins=50,show.legend=FALSE) +
+  scale_fill_viridis(option="A",discrete = T)
+```
+
+
+bestes Modell finden
+
+```{r}
+for(i in 0:50){
+  model <- buildKriging(x,matrix(y,,1))
+  if(model$like < 298){
+    break
+  }
+  
+  #print(model$like)
+}
+model$like
+
+```
+
+
+```{r}
+
+yplot <- predict(model,xplot)
+df <- data.frame(x.1=xplot$Var1,x.2=xplot$Var2,y=yplot)
+ggplot(data=df,aes(x=x.1,y=x.2,z=y)) +
+  geom_contour_filled(bins=50,show.legend=FALSE) +
+  scale_fill_viridis(option="A",discrete = T)
+```
+
+
+```{r}
+for(i in 0:50){
+  model_cmaes <- buildKriging(x,matrix(y,,1),control=list(
+      algTheta=cma_es
+  ))
+  if(model_cmaes$like < 298){
+    break
+  }
+  
+  #print(model_cmaes$like)
+  
+}
+
+model_cmaes$like
+```
+
+
+```{r}
+
+yplot <- predict(model_cmaes,xplot)
+df <- data.frame(x.1=xplot$Var1,x.2=xplot$Var2,y=yplot)
+ggplot(data=df,aes(x=x.1,y=x.2,z=y)) +
+  geom_contour_filled(bins=50,show.legend=FALSE) +
+  scale_fill_viridis(option="A",discrete = T)
+```
+
+
+
+
+
+CMA-ES
+
+
+```{r}
+
+cma_es <- function (x = NULL, fun, lower, upper, 
+                                 control = list(), ...) {
+  result <- cmaes::cma_es(par = runif(length(lower),lower,upper),
+                          fn=fun,lower = lower, upper=upper, ...)
+  
+  list(
+    xbest = result$par, 
+    ybest = result$value, 
+    count = 0
+  )
+}
+
+```
+
+
+
+
+
+
+Evaluation
+
+```{r}
+#set.seed(1)
+n_eval <- 50
+x_eval <- cbind(runif(n_eval,lower[1],upper[1]),runif(n_eval,lower[2],upper[2]))
+
+y_eval <- f(x_eval)
+```
+
+
+```{r}
+
+likes_cma_es <- NULL
+likes_default <- NULL
+
+rmse_cma_es <- NULL
+rmse_default <- NULL
+
+
+for(i in 0:50){
+  model_cmaes <- buildKriging(x,matrix(y,,1),control=list(
+      algTheta=cma_es
+  ))
+    
+  model_default <- buildKriging(x,matrix(y,,1))
+  
+  likes_cma_es <- rbind(likes_cma_es, model_cmaes$like)
+  likes_default <- rbind(likes_default, model_default$like)
+  
+  
+  y_cmaes <- predict(model_cmaes, x_eval)
+  y_default <- predict(model_default, x_eval)
+  
+  y_ev <- cbind(y_eval)
+  y_cm <- NULL
+  y_def <- NULL
+  
+  for(element in y_cmaes){
+    y_cm <- cbind(y_cm, element)
+  }
+  
+  for(element in y_default){
+    y_def <- cbind(y_def, element)
+  }
+  
+  rmse_cma_es <- cbind(rmse_cma_es, sqrt(mean((y_ev - y_cm)^2)))
+  rmse_default <- cbind(rmse_default, sqrt(mean((y_ev - y_def)^2)))
+
+}
+
+likes_cma_es
+likes_default
+
+rmse_cma_es
+rmse_default
+
+```
+
+
+```{r}
+
+boxplot(rmse_cma_es[1,], rmse_default[1,],horizontal=T,names=c("CMA-ES","Default"))
+
+```
+

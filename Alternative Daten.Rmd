@@ -1,0 +1,337 @@
+---
+title: "Projektbeschreibung - AOT"
+author: "Martin Zaefferer"
+output:
+  pdf_document: default
+  html_document: 
+    theme: readable
+    toc: yes
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    highlight: pygments
+    number_sections: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+set.seed(1)
+n <- 70
+lower <- c(-2.5,-1.5)
+upper <- c(1.5,2.5)
+x <- cbind(runif(n,lower[1],upper[1]),runif(n,lower[2],upper[2]))
+f <- function(x){
+  20 + x[,1]^2 + x[,2]^2 - 10*(cos(2*pi*x[,1]) + cos(2*pi*x[,2]))
+}
+y <- f(x)
+
+## Alternative mit einer anderen Testfunktion:
+set.seed(1)
+n_new <- 50
+lower_new <- c(-5,0)
+upper_new <- c(10,15)
+x_new <- cbind(runif(n_new,lower_new[1],upper_new[1]),runif(n_new,lower_new[2],upper_new[2]))
+f_new <- function(x){
+  (x[,2] - 5.1/(4 * pi^2) * (x[,1]^2) + 5/pi * x[,1] - 6)^2 + 
+            10 * (1 - 1/(8 * pi)) * cos(x[,1]) + 10
+}
+y_new <- f_new(x_new)
+
+```
+
+
+
+```{r}
+df <- data.frame(x=x,y=y)
+require(ggplot2)
+require(viridis)
+ggplot(data=df,aes(x=x.1,y=x.2,colour=y)) +
+  geom_point() +
+  scale_colour_viridis(option="A")
+```
+
+
+```{r}
+df <- data.frame(x=x_new,y=y_new)
+require(ggplot2)
+require(viridis)
+ggplot(data=df,aes(x=x.1,y=x.2,colour=y)) +
+  geom_point() +
+  scale_colour_viridis(option="A")
+```
+
+
+
+```{r}
+require(SPOT)
+
+```
+
+
+
+```{r}
+nplot_dim <- 100
+xplot <- expand.grid(seq(from=lower_new[1],to=upper_new[1],length.out=nplot_dim),
+               seq(from=lower_new[2],to=upper_new[2],length.out=nplot_dim))
+yplot2 <- f_new(xplot)
+df <- data.frame(x.1=xplot$Var1,x.2=xplot$Var2,y=yplot2)
+ggplot(data=df,aes(x=x.1,y=x.2,z=y)) +
+  geom_contour_filled(bins=50,show.legend=FALSE) +
+  scale_fill_viridis(option="A",discrete = T)
+```
+
+CMA-ES
+
+```{r}
+cma_es <- function (x = NULL, fun, lower, upper, 
+                                 control = list(), ...) {
+    result <- cmaes::cma_es(par = runif(length(lower),lower,upper),
+                          fn=fun,lower = lower, upper=upper, ..., 
+                          control = list(
+                            funEvals = 1500, 
+                            maxIter = 500, 
+                            budget = 50,
+                            sigma = 400,
+                            mu = 10,
+                            lambda = 50
+                          )
+                          )
+  
+  list(
+    xbest = result$par, 
+    ybest = result$value, 
+    count = 0
+  )
+}
+```
+
+
+
+Modelle
+
+```{r}
+
+for(i in 0:50){
+  model <- buildKriging(x_new,matrix(y_new,,1))
+  if(model$like < 52){
+    break
+  }
+  #print(model$like)
+}
+
+```
+
+```{r}
+
+for(i in 0:50){
+  model_cmaes <- buildKriging(x_new,matrix(y_new,,1),control=list(
+      algTheta=cma_es
+))
+  #if(model$like < 300){
+  #  break
+  #}
+
+  print(model_cmaes$like)
+}
+
+```
+
+
+
+
+Visualisierung Vorhersagen
+```{r}
+
+yplot <- predict(model,xplot)
+df <- data.frame(x.1=xplot$Var1,x.2=xplot$Var2,y=yplot)
+ggplot(data=df,aes(x=x.1,y=x.2,z=y)) +
+  geom_contour_filled(bins=50,show.legend=FALSE) +
+  scale_fill_viridis(option="A",discrete = T)
+
+```
+
+```{r}
+
+yplot <- predict(model_cmaes,xplot)
+df <- data.frame(x.1=xplot$Var1,x.2=xplot$Var2,y=yplot)
+ggplot(data=df,aes(x=x.1,y=x.2,z=y)) +
+  geom_contour_filled(bins=50,show.legend=FALSE) +
+  scale_fill_viridis(option="A",discrete = T)
+
+```
+
+
+
+Evaluation
+
+```{r}
+set.seed(1)
+n_eval <- 50
+x_eval <- cbind(runif(n_eval,lower[1],upper[1]),runif(n_eval,lower[2],upper[2]))
+
+y_eval <- f(x_eval)
+```
+
+```{r}
+set.seed(1)
+n_eval_new <- 50
+x_eval_new <- cbind(runif(n_eval_new,lower_new[1],upper_new[1]),
+                    runif(n_eval_new,lower_new[2],upper_new[2]))
+
+y_eval_new <- f_new(x_eval_new)
+```
+
+
+```{r}
+
+likes_cma_es <- NULL
+likes_default <- NULL
+
+theta_cma_es <- NULL
+theta_default <-NULL
+
+lambda_cma_es <- NULL
+lambda_default <- NULL
+
+rmse_cma_es <- NULL
+rmse_default <- NULL
+
+
+likes_cma_es_new <- NULL
+likes_default_new <- NULL
+
+theta_cma_es_new <- NULL
+theta_default_new <-NULL
+
+lambda_cma_es_new <- NULL
+lambda_default_new <- NULL
+
+rmse_cma_es_new <- NULL
+rmse_default_new <- NULL
+
+
+for(i in 0:50){
+  print(i)
+  model_cmaes <- buildKriging(x,matrix(y,,1),control=list(
+      algTheta=cma_es
+  ))
+  
+  model_cmaes_new <- buildKriging(x_new,matrix(y_new,,1),control=list(
+      algTheta=cma_es
+  ))
+    
+  model_default <- buildKriging(x,matrix(y,,1))
+  
+  model_default_new <- buildKriging(x_new,matrix(y_new,,1))
+  
+  likes_cma_es <- rbind(likes_cma_es, model_cmaes$like)
+  likes_default <- rbind(likes_default, model_default$like)
+  
+  likes_cma_es_new <- rbind(likes_cma_es_new, model_cmaes_new$like)
+  likes_default_new <- rbind(likes_default_new, model_default_new$like)
+  
+  theta_cma_es <- rbind(theta_cma_es, model_cmaes$Theta)
+  theta_default <- rbind(theta_default, model_default$Theta)
+  
+  theta_cma_es_new <- rbind(theta_cma_es_new, model_cmaes_new$Theta)
+  theta_default_new <- rbind(theta_default_new, model_default_new$Theta)
+  
+  lambda_cma_es <- rbind(lambda_cma_es, model_cmaes$Lambda)
+  lambda_default <- rbind(lambda_default, model_default$Lambda)
+  
+  lambda_cma_es_new <- rbind(lambda_cma_es_new, model_cmaes_new$Lambda)
+  lambda_default_new <- rbind(lambda_default_new, model_default_new$Lambda)
+  
+  y_cmaes <- predict(model_cmaes, x_eval)
+  y_default <- predict(model_default, x_eval)
+  
+  y_cmaes_new <- predict(model_cmaes_new, x_eval_new)
+  y_default_new <- predict(model_default_new, x_eval_new)
+  
+  y_ev <- cbind(y_eval)
+  y_cm <- NULL
+  y_def <- NULL
+  
+  y_ev_new <- cbind(y_eval_new)
+  y_cm_new <- NULL
+  y_def_new <- NULL
+  
+  for(element in y_cmaes){
+    y_cm <- cbind(y_cm, element)
+  }
+  
+  for(element in y_default){
+    y_def <- cbind(y_def, element)
+  }
+  
+  for(element in y_cmaes_new){
+    y_cm_new <- cbind(y_cm_new, element)
+  }
+  
+  for(element in y_default_new){
+    y_def_new <- cbind(y_def_new, element)
+  }
+  
+  rmse_cma_es <- cbind(rmse_cma_es, sqrt(mean((y_ev - y_cm)^2)))
+  rmse_default <- cbind(rmse_default, sqrt(mean((y_ev - y_def)^2)))
+  
+  rmse_cma_es_new <- cbind(rmse_cma_es_new, sqrt(mean((y_ev_new - y_cm_new)^2)))
+  rmse_default_new <- cbind(rmse_default_new, sqrt(mean((y_ev_new - y_def_new)^2)))
+
+}
+
+#likes_cma_es
+#likes_default
+
+#rmse_cma_es
+#rmse_default
+
+```
+
+
+```{r}
+
+boxplot(likes_cma_es[,1], likes_default[,1], 
+        likes_cma_es_new[,1], likes_default_new[,1],
+        horizontal=T,names=c("CMA-ES F1","DE F1",
+                             "CMA-ES F2", "DE F2"),
+        col = "blue")+
+theme(text = element_text(size=5))
+
+```
+
+
+
+```{r}
+df <- data.frame(x=theta_default_new,y=likes_default_new)
+require(ggplot2)
+require(viridis)
+ggplot(data=df,aes(x=x.1,y=x.2,colour=y)) +
+  geom_point() +
+  scale_colour_viridis(option="A")
+```
+
+
+
+
+```{r}
+df <- data.frame(x=theta_cma_es_new,y=likes_cma_es_new)
+require(ggplot2)
+require(viridis)
+ggplot(data=df,aes(x=x.1,y=x.2,colour=y)) +
+  geom_point() +
+  scale_colour_viridis(option="A")
+```
+
+
+```{r}
+
+boxplot(likes_cma_es_new[,1], likes_default_new[,1],horizontal=T,names=c("CMA-ES","Default"))
+boxplot(rmse_cma_es_new[1,], rmse_default_new[1,],horizontal=T,names=c("CMA-ES","Default"))
+
+```
